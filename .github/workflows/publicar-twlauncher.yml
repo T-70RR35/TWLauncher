@@ -1,0 +1,49 @@
+name: Gerar e publicar TW Launcher para Windows
+on:
+  push:
+    tags:
+      - 'v*'
+  workflow_dispatch:
+    inputs:
+      version:
+        description: 'Versão sem v (ex.: 0.6.13)'
+        required: true
+        default: '0.6.13'
+permissions:
+  contents: write
+jobs:
+  windows-installer:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Instalar .NET 10
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '10.0.x'
+      - name: Instalar Velopack CLI (mesma versão do pacote NuGet)
+        shell: pwsh
+        run: dotnet tool install --global vpk --version 1.2.161
+      - name: Compilar, empacotar e publicar GitHub Release
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GITHUB_REPOSITORY: ${{ github.repository }}
+          GIT_TAG: ${{ github.ref_name }}
+          MANUAL_VERSION: ${{ inputs.version }}
+          RUN_KIND: ${{ github.event_name }}
+        run: |
+          if ($env:RUN_KIND -eq 'workflow_dispatch') {
+            $version = $env:MANUAL_VERSION
+          } else {
+            $version = $env:GIT_TAG -replace '^v', ''
+          }
+          if ($version -notmatch '^\d+\.\d+\.\d+(?:-[0-9A-Za-z.-]+)?$') { throw "Versão inválida: $version" }
+          $tag = "v$version"
+          .\Publicar-TWLauncher.ps1 -Version $version -RepositoryUrl "https://github.com/$env:GITHUB_REPOSITORY" -GitHubToken $env:GH_TOKEN -Upload -ReleaseTag $tag
+      - name: Disponibilizar instalador e pacotes como artefato
+        if: success()
+        uses: actions/upload-artifact@v4
+        with:
+          name: TWLauncher-Windows-Installer
+          path: Releases/*
+          if-no-files-found: error

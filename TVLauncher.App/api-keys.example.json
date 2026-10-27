@@ -1,0 +1,8 @@
+{
+  "watchmodeApiKey": "",
+  "tmdbReadAccessToken": "",
+  "catalogMode": "standalone",
+  "sharedCatalogPath": "",
+  "maxTitlesPerSync": 12,
+  "monthlyWatchmodeRequestBudget": 500
+}

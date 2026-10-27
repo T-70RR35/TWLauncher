@@ -1,0 +1,233 @@
+<Window x:Class="TVLauncher.App.StreamingWindow"
+		xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+		xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+		xmlns:webview="clr-namespace:Microsoft.Web.WebView2.Wpf;assembly=Microsoft.Web.WebView2.Wpf"
+		Title="TW Launcher - Navegação"
+		WindowStyle="None"
+		ResizeMode="NoResize"
+		WindowState="Maximized"
+		Background="#0B0D11">
+
+	<Window.Resources>
+		<SolidColorBrush x:Key="FocusForeground" Color="#F5F5F3" />
+		<SolidColorBrush x:Key="FocusMuted" Color="#A7AAB1" />
+
+		<!-- Ações secundárias: discretas, sem blocos azuis do visual anterior. -->
+		<Style x:Key="FocusToolButton" TargetType="Button">
+			<Setter Property="Width" Value="38" />
+			<Setter Property="Height" Value="38" />
+			<Setter Property="Padding" Value="9" />
+			<Setter Property="Margin" Value="2,0" />
+			<Setter Property="Background" Value="Transparent" />
+			<Setter Property="Foreground" Value="{StaticResource FocusForeground}" />
+			<Setter Property="BorderThickness" Value="0" />
+			<Setter Property="Cursor" Value="Hand" />
+			<Setter Property="VerticalAlignment" Value="Center" />
+			<Setter Property="Template">
+				<Setter.Value>
+					<ControlTemplate TargetType="Button">
+						<Border x:Name="Surface"
+								Background="{TemplateBinding Background}"
+								CornerRadius="7"
+								Padding="{TemplateBinding Padding}">
+							<ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center" />
+						</Border>
+						<ControlTemplate.Triggers>
+							<Trigger Property="IsMouseOver" Value="True">
+								<Setter TargetName="Surface" Property="Background" Value="#282C34" />
+							</Trigger>
+							<Trigger Property="IsPressed" Value="True">
+								<Setter TargetName="Surface" Property="Background" Value="#383D46" />
+							</Trigger>
+							<Trigger Property="IsEnabled" Value="False">
+								<Setter Property="Foreground" Value="#5F646E" />
+								<Setter Property="Cursor" Value="Arrow" />
+							</Trigger>
+						</ControlTemplate.Triggers>
+					</ControlTemplate>
+				</Setter.Value>
+			</Setter>
+		</Style>
+
+		<!-- Ação principal: voltar ao TW Launcher. -->
+		<Style x:Key="FocusHomeButton" TargetType="Button">
+			<Setter Property="Background" Value="#E8E9E6" />
+			<Setter Property="Foreground" Value="#181D25" />
+			<Setter Property="BorderThickness" Value="0" />
+			<Setter Property="Padding" Value="14,8" />
+			<Setter Property="FontWeight" Value="SemiBold" />
+			<Setter Property="FontSize" Value="13" />
+			<Setter Property="Cursor" Value="Hand" />
+			<Setter Property="VerticalAlignment" Value="Center" />
+			<Setter Property="Template">
+				<Setter.Value>
+					<ControlTemplate TargetType="Button">
+						<Border x:Name="Surface"
+								Background="{TemplateBinding Background}"
+								CornerRadius="7"
+								Padding="{TemplateBinding Padding}">
+							<ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center" />
+						</Border>
+						<ControlTemplate.Triggers>
+							<Trigger Property="IsMouseOver" Value="True">
+								<Setter TargetName="Surface" Property="Background" Value="#CCD3DA" />
+							</Trigger>
+							<Trigger Property="IsPressed" Value="True">
+								<Setter TargetName="Surface" Property="Background" Value="#B5BBC3" />
+							</Trigger>
+						</ControlTemplate.Triggers>
+					</ControlTemplate>
+				</Setter.Value>
+			</Setter>
+		</Style>
+	</Window.Resources>
+
+	<!-- Duas linhas mantêm a compatibilidade com o WebView2 (HWND).
+	     O cabeçalho Collapsed não reserva espaço e a página volta à tela toda. -->
+	<Grid>
+		<Grid.RowDefinitions>
+			<RowDefinition Height="Auto" />
+			<RowDefinition Height="*" />
+		</Grid.RowDefinitions>
+
+		<Border x:Name="HeaderPanel"
+				Grid.Row="0"
+				Height="58"
+				Visibility="Collapsed"
+				Background="#101217"
+				BorderBrush="#292C32"
+				BorderThickness="0,0,0,1">
+
+			<Grid Margin="18,0,24,0">
+				<Grid.ColumnDefinitions>
+					<ColumnDefinition Width="Auto" />
+					<ColumnDefinition Width="Auto" />
+					<ColumnDefinition Width="Auto" />
+					<ColumnDefinition Width="*" />
+					<ColumnDefinition Width="Auto" />
+					<ColumnDefinition Width="Auto" />
+					<ColumnDefinition Width="Auto" />
+				</Grid.ColumnDefinitions>
+
+				<!-- Logo e marca alinhadas com o menu lateral do Focus. -->
+				<StackPanel Grid.Column="0"
+							Orientation="Horizontal"
+							VerticalAlignment="Center"
+							Margin="0,0,18,0">
+					<Image Source="Assets/TWLauncher_Symbol.png"
+						   Width="32"
+						   Height="32"
+						   Stretch="Uniform"
+						   SnapsToDevicePixels="True" />
+					<StackPanel VerticalAlignment="Center" Margin="10,0,0,0">
+						<TextBlock Text="TW LAUNCHER"
+								   Foreground="#8E939D"
+								   FontSize="10"
+								   FontWeight="Bold" />
+						<TextBlock Text="Navegador"
+								   Foreground="{StaticResource FocusForeground}"
+								   FontSize="15"
+								   FontWeight="SemiBold" />
+					</StackPanel>
+				</StackPanel>
+
+				<Border Grid.Column="1"
+						Width="1"
+						Height="24"
+						VerticalAlignment="Center"
+						Margin="0,0,18,0"
+						Background="#30343B" />
+
+				<Button Grid.Column="2"
+						Name="HomeButton"
+						Style="{StaticResource FocusHomeButton}"
+						ToolTip="Voltar para a Home (Ctrl + Alt + Home)"
+						Click="HomeButton_Click"
+						Margin="0,0,18,0">
+					<StackPanel Orientation="Horizontal">
+						<Path Width="15" Height="15" Stretch="Uniform"
+								  Stroke="#181D25" StrokeThickness="1.8"
+								  StrokeLineJoin="Round" StrokeStartLineCap="Round" StrokeEndLineCap="Round"
+								  Data="M 2,8 L 8,3 L 14,8 M 4.5,7 L 4.5,14 L 11.5,14 L 11.5,7" />
+						<TextBlock Text="Início" Margin="8,0,0,0" VerticalAlignment="Center" />
+					</StackPanel>
+				</Button>
+
+				<!-- Nome do aplicativo em uso, vindo do cadastro existente. -->
+				<TextBlock Grid.Column="3"
+						   Name="ServiceTitle"
+						   VerticalAlignment="Center"
+						   FontSize="15"
+						   FontWeight="SemiBold"
+						   Foreground="#DCE0E6"
+						   TextTrimming="CharacterEllipsis"
+						   Margin="0,0,16,0" />
+
+				<!-- Navegação do WebView2. -->
+				<StackPanel Grid.Column="4"
+							Orientation="Horizontal"
+							VerticalAlignment="Center"
+							Margin="0,0,17,0">
+					<Button Name="BackButton"
+							Style="{StaticResource FocusToolButton}"
+							ToolTip="Voltar à página anterior"
+							Click="BackButton_Click"
+							IsEnabled="False">
+						<Path Width="17" Height="17" Stretch="Uniform"
+								  Stroke="{Binding Foreground, RelativeSource={RelativeSource AncestorType=Button}}"
+								  StrokeThickness="1.8" StrokeLineJoin="Round"
+								  StrokeStartLineCap="Round" StrokeEndLineCap="Round"
+								  Data="M 12,3 L 5,10 L 12,17" />
+					</Button>
+					<Button Name="ForwardButton"
+							Style="{StaticResource FocusToolButton}"
+							ToolTip="Avançar à próxima página"
+							Click="ForwardButton_Click"
+							IsEnabled="False">
+						<Path Width="17" Height="17" Stretch="Uniform"
+								  Stroke="{Binding Foreground, RelativeSource={RelativeSource AncestorType=Button}}"
+								  StrokeThickness="1.8" StrokeLineJoin="Round"
+								  StrokeStartLineCap="Round" StrokeEndLineCap="Round"
+								  Data="M 5,3 L 12,10 L 5,17" />
+					</Button>
+					<Button Style="{StaticResource FocusToolButton}"
+							ToolTip="Atualizar página"
+							Click="ReloadButton_Click">
+						<Path Width="18" Height="18" Stretch="Uniform"
+								  Stroke="{Binding Foreground, RelativeSource={RelativeSource AncestorType=Button}}"
+								  StrokeThickness="1.8" StrokeLineJoin="Round"
+								  StrokeStartLineCap="Round" StrokeEndLineCap="Round"
+								  Data="M 15,8 A 6,6 0 1 0 15.4,12 M 15,3 L 15,8 L 10,8" />
+					</Button>
+				</StackPanel>
+
+				<Border Grid.Column="5"
+						Width="1"
+						Height="24"
+						VerticalAlignment="Center"
+						Margin="0,0,20,0"
+						Background="#30343B" />
+
+				<StackPanel Grid.Column="6" Orientation="Horizontal" VerticalAlignment="Center">
+					<TextBlock x:Name="WeatherSymbol"
+							   Text="☁" Foreground="#D7DBE1"
+							   FontSize="21" VerticalAlignment="Center"
+							   Margin="0,0,9,0" />
+					<TextBlock x:Name="WeatherText"
+							   Text="--°" Foreground="#E7E8EA"
+							   FontSize="14" FontWeight="SemiBold"
+							   VerticalAlignment="Center" />
+					<Border Width="1" Height="23"
+								Background="#30343B"
+								Margin="19,0" VerticalAlignment="Center" />
+					<TextBlock x:Name="ClockText"
+							   Foreground="#F4F5F5"
+							   FontSize="16" FontWeight="SemiBold"
+							   VerticalAlignment="Center" MinWidth="46" />
+				</StackPanel>
+			</Grid>
+		</Border>
+
+		<webview:WebView2 Grid.Row="1" Name="Browser" />
+	</Grid>
+</Window>

@@ -1,0 +1,1347 @@
+@using System.IO
+@implements IAsyncDisposable
+@inject LauncherRepository Repository
+@inject WindowsHostService Host
+@inject WeatherService WeatherService
+@inject NewsService NewsService
+@inject TrendingCatalogService TrendingCatalogService
+@inject StreamingProviderDirectory StreamingProviders
+@inject CatalogCredentialsService CatalogCredentials
+@inject FeaturedRotationService RotationService
+@inject AppIconService IconService
+@inject LauncherUpdateService Updater
+@inject IJSRuntime Js
+
+<div class="shell focus-shell">
+    <aside class="focus-rail" aria-label="Navegação do TW Launcher">
+        <button class="focus-logo" @onclick='() => SwitchTab("home")' aria-label="TW Launcher — Início" title="Início">
+            <img src="img/tw-brand.png" alt="" />
+        </button>
+        <nav class="focus-nav" aria-label="Menu principal">
+            <button class="focus-nav-item @(Tab == "home" ? "focus-active" : "")" @onclick='() => SwitchTab("home")' aria-label="Início" title="Início">
+                <svg viewBox="0 0 24 24" aria-hidden="true"><path d="m3 10 9-7 9 7v10a1 1 0 0 1-1 1h-5v-7H9v7H4a1 1 0 0 1-1-1Z" /></svg><span>Início</span>
+            </button>
+            <button class="focus-nav-item @(Tab == "apps" ? "focus-active" : "")" @onclick='() => SwitchTab("apps")' aria-label="Aplicativos" title="Apps">
+                <svg viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="3" width="7" height="7" rx="1.5"/><rect x="14" y="3" width="7" height="7" rx="1.5"/><rect x="3" y="14" width="7" height="7" rx="1.5"/><rect x="14" y="14" width="7" height="7" rx="1.5"/></svg><span>Apps</span>
+            </button>
+            <button class="focus-nav-item @(Tab == "news" ? "focus-active" : "")" @onclick='() => SwitchTab("news")' aria-label="Notícias" title="Notícias">
+                <svg viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="4" width="18" height="16" rx="2"/><path d="M8 8h8M8 12h8M8 16h5"/></svg><span>Notícias</span>
+            </button>
+            <button class="focus-nav-item @(Tab == "weather" ? "focus-active" : "")" @onclick='() => SwitchTab("weather")' aria-label="Clima" title="Clima">
+                <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M7 18h11a4 4 0 0 0 0-8 6 6 0 0 0-11.5 1.5A3.3 3.3 0 0 0 7 18Z"/><path d="M7 5v2M3 8l2 1"/></svg><span>Clima</span>
+            </button>
+        </nav>
+        <button class="focus-nav-item focus-settings @(Tab == "settings" ? "focus-active" : "")" @onclick='() => SwitchTab("settings")' aria-label="Configurações" title="Configurações">
+            <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a2 2 0 0 1 .1 2.2l-1.1 1.4a2 2 0 0 1-2.1.6l-1.4-.5a8 8 0 0 1-2 .8l-.3 1.5h-1.8l-.4-1.5a8 8 0 0 1-2-.8l-1.4.5a2 2 0 0 1-2.1-.6l-1-1.4a2 2 0 0 1 .1-2.2l.9-1.1a7 7 0 0 1 0-2l-.9-1.1a2 2 0 0 1-.1-2.2l1-1.4a2 2 0 0 1 2.1-.6l1.4.5a8 8 0 0 1 2-.8l.4-1.5h1.8l.3 1.5a8 8 0 0 1 2 .8l1.4-.5a2 2 0 0 1 2.1.6l1.1 1.4a2 2 0 0 1-.1 2.2l-.9 1.1a7 7 0 0 1 0 2Z"/></svg><span>Ajustes</span>
+        </button>
+    </aside>
+    <div class="focus-main">
+        <header class="focus-topbar" aria-label="Barra superior">
+            <div class="focus-page-identity">
+                <span class="focus-appname">TW LAUNCHER</span>
+                <strong>@TabTitle</strong>
+            </div>
+            <div class="focus-topbar-right">
+                <button class="focus-search-trigger" title="Pesquisar no catálogo" aria-label="Pesquisar filmes e séries" aria-expanded="@ShowSearch" @onclick="ToggleSearch">
+                    <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="10.8" cy="10.8" r="6.5"/><path d="m16 16 5 5"/></svg>
+                </button>
+                <button class="focus-weather" @onclick='() => SwitchTab("weather")' title="Ver previsão do tempo">
+                    <span aria-hidden="true">☁</span> @(Weather is null ? "--°" : $"{Weather.Temperature}°")
+                </button>
+                <div class="focus-time"><strong>@Now.ToString("HH:mm")</strong><span>@Now.ToString("ddd, dd MMM", new System.Globalization.CultureInfo("pt-BR"))</span></div>
+            </div>
+        </header>
+
+    @if (ShowSearch)
+    {
+        <section class="search-panel" aria-label="Pesquisa do catálogo">
+            <div class="search-input-wrap">
+                <span aria-hidden="true">⌕</span>
+                <input placeholder="Buscar filmes ou séries..." @bind="SearchText" @bind:event="oninput" aria-label="Buscar filmes e séries" />
+                <button @onclick="CloseSearch" aria-label="Fechar pesquisa">×</button>
+            </div>
+            @if (!string.IsNullOrWhiteSpace(SearchText))
+            {
+                <div class="search-results">
+                    @if (SearchResults.Count == 0)
+                    {
+                        <p>Nenhum título encontrado no catálogo local.</p>
+                    }
+                    @foreach (var result in SearchResults)
+                    {
+                        <button @key="result.RotationKey" @onclick="() => OpenSearchResultAsync(result)">
+                            <img src="@result.ImageUrl" alt="" loading="lazy" />
+                            <span><strong>@result.Title</strong><small>@result.Provider</small></span>
+                        </button>
+                    }
+                </div>
+            }
+        </section>
+    }
+
+    @if (Tab == "home")
+    {
+        <main class="home-content">
+            @if (Featured.Count > 0)
+            {
+                var selected = Featured[ActiveFeature];
+                <section class="cinema-hero hero-premium" @ref="HeroElement"
+                         aria-label="Destaque: @selected.Title">
+                    <div class="hero-wallpaper" style="background-image: url('@selected.ImageUrl')" aria-hidden="true"></div>
+                    <div class="hero-content" @key="HeroContentKey(selected)">
+                        <div class="focus-feature-label"><span class="focus-feature-line"></span> EM DESTAQUE</div>
+                        <div class="hero-eyebrow">@selected.Provider <span class="focus-dot-divider">·</span> @selected.Category</div>
+                        <h1 class="@(selected.Title.Length > 48 ? "hero-title-long" : selected.Title.Length > 30 ? "hero-title-medium" : "")">@selected.Title</h1>
+                        <div class="hero-pills"><span>@selected.Category</span></div>
+                        @if (!string.IsNullOrWhiteSpace(selected.Synopsis))
+                        {
+                            <p class="hero-synopsis">@selected.Synopsis</p>
+                        }
+                        <div class="hero-actions">
+                            <button class="primary-btn" @onclick="() => WatchFeatured(selected)" aria-label="Assistir @selected.Title">
+                                <span aria-hidden="true">▶</span> Assistir agora
+                            </button>
+                            <button class="hero-details-btn" @onclick="() => ShowFeaturedDetails = true" aria-label="Ver detalhes de @selected.Title">
+                                Detalhes
+                            </button>
+                        </div>
+                    </div>
+                    <div class="hero-showcase" @key="HeroShowcaseKey(selected)">
+                        <div class="hero-showcase-heading">
+                            <span class="showcase-kicker"><span class="showcase-live-dot"></span> @(string.IsNullOrWhiteSpace(selected.TrailerVideoId) ? "EM DESTAQUE" : "PRÉVIA DO TRAILER")</span>
+                            @if (PlayTrailer && !string.IsNullOrWhiteSpace(selected.TrailerVideoId))
+                            {
+                                <button type="button" class="trailer-audio-button" data-trailer-audio
+                                        title="Ativar som do trailer" aria-label="Ativar som do trailer">🔊</button>
+                            }
+                        </div>
+                        <div class="hero-player-area">
+                            <div class="hero-media-still" style="background-image: url('@selected.ImageUrl')" aria-hidden="true"></div>
+                            @if (PlayTrailer && !string.IsNullOrWhiteSpace(selected.TrailerVideoId))
+                            {
+                                <iframe @key="selected.RotationKey" class="hero-iframe"
+                                        src="@EmbedUrl(selected.TrailerVideoId!)"
+                                        title="Trailer de @selected.Title"
+                                        allow="autoplay; encrypted-media; fullscreen; picture-in-picture"
+                                        referrerpolicy="strict-origin-when-cross-origin"
+                                        allowfullscreen></iframe>
+                            }
+                            else
+                            {
+                                <div class="player-placeholder" style="background-image: url('@selected.ImageUrl')">
+                                    <div class="player-placeholder-scrim">
+                                        @if (!string.IsNullOrWhiteSpace(selected.TrailerVideoId))
+                                        {
+                                            <span class="play-outline" aria-hidden="true">▶</span>
+                                            <span class="preview-hint">Trailer disponível</span>
+                                        }
+                                    </div>
+                                </div>
+                            }
+                        </div>
+                    </div>
+                    <div class="hero-arrows" aria-label="Navegar pelos destaques">
+                        <button class="ghost-btn" @onclick="PreviousFeaturedAsync" aria-label="Destaque anterior" title="Anterior">‹</button>
+                        <button class="ghost-btn" @onclick="() => NextFeaturedAsync(manual: true)" aria-label="Próximo destaque" title="Próximo">›</button>
+                    </div>
+                    <div class="hero-bottom-rule" aria-hidden="true"></div>
+                    <div class="hero-progress hero-progress-premium" @ref="HeroSelectorElement"
+                     aria-label="Navegação dos destaques">
+                    <span class="progress-current">@((ActiveFeature + 1).ToString("00"))</span>
+                    <div class="hero-segments">
+                        @* Cada indicador representa uma posição fixa na fila desta visita. *@
+                        @for (var i = 0; i < Featured.Count; i++)
+                        {
+                            var index = i;
+                            <button @key="index" type="button" title="Ver @Featured[index].Title"
+                                    class="progress-dot @(index == ActiveFeature ? "progress-selected" : "")"
+                                    aria-label="Selecionar destaque: @Featured[index].Title"
+                                    aria-current="@(index == ActiveFeature ? "true" : null)"
+                                    @onmouseenter="() => PreviewFeaturedAsync(index)"
+                                    @onfocus="() => PreviewFeaturedAsync(index)"
+                                    @onclick="() => SetFeaturedAsync(index)"></button>
+                        }
+                    </div>
+                    <span class="progress-total">/ @Featured.Count.ToString("00")</span>
+                    </div>
+                </section>
+                @if (ShowFeaturedDetails)
+                {
+                    <div class="feature-details-overlay" role="presentation" @onclick="() => ShowFeaturedDetails = false">
+                        <section class="feature-details-dialog" role="dialog" aria-modal="true" aria-label="Detalhes de @selected.Title" @onclick:stopPropagation="true">
+                            <button class="feature-details-close" @onclick="() => ShowFeaturedDetails = false" aria-label="Fechar detalhes">×</button>
+                            <span class="feature-details-kicker">@selected.Provider · @selected.Category</span>
+                            <h2>@selected.Title</h2>
+                            @if (!string.IsNullOrWhiteSpace(selected.Genres)) { <p class="feature-details-genres">@selected.Genres</p> }
+                            <p class="feature-details-description">@(string.IsNullOrWhiteSpace(selected.Synopsis) ? "Sinopse ainda não disponível para este título." : selected.Synopsis)</p>
+                            <button class="primary-btn" @onclick="() => WatchFeatured(selected)"><span aria-hidden="true">▶</span> Assistir agora</button>
+                        </section>
+                    </div>
+                }
+            }
+            else
+            {
+                <section class="empty-hero">
+                    <div class="hero-eyebrow"><span class="eyebrow-dot"></span> CATÁLOGO AUTOMÁTICO</div>
+                    <h1>Seu entretenimento começa aqui.</h1>
+                    <p>@(Featured.Count == 0 ? "Escolha um aplicativo abaixo. Os destaques aparecerão automaticamente quando houver catálogo disponível." : "Filmes e séries em destaque.")</p>
+                </section>
+            }
+
+            <section class="content-section apps-section">
+                <div class="section-heading"><h2>Seus apps</h2>
+                    <button class="apps-view-all" @onclick='() => SwitchTab("apps")'>Ver todos <span aria-hidden="true">→</span></button>
+                </div>
+                <div class="apps-grid">
+                    @foreach (var app in Apps.Where(x => x.PinnedToHome))
+                    {
+                        <button @key="app.Id" class="app-tile app-@app.Icon @HomeAppBrand(app)" title="Abrir @app.Name" @onclick="() => OpenApp(app)">
+                            <AppArtwork App="app" /><span class="app-tile-name">@app.Name</span>
+                        </button>
+                    }
+                    @if (!Apps.Any(x => x.PinnedToHome))
+                    {
+                        <button class="app-tile add-tile" @onclick='() => SwitchTab("apps")'>
+                            <span class="app-icon">＋</span><span>Fixar aplicativos</span>
+                        </button>
+                    }
+                </div>
+            </section>
+
+            <section class="content-section movies-section">
+                <div class="section-heading"><h2>Populares para assistir</h2>
+                    @if (Featured.Count > 0) { <button class="apps-view-all" @onclick="() => ShowAllPopular = !ShowAllPopular">@(ShowAllPopular ? "Ver menos" : "Ver todos") <span aria-hidden="true">›</span></button> }
+                </div>
+                @if (Featured.Count > 0)
+                {
+                    <div class="movie-row popular-row @(ShowAllPopular ? "movie-row-expanded" : "")">
+                        @foreach (var item in Featured)
+                        {
+                            <button class="movie-card" style="--movie-image: url('@item.ImageUrl')" @onclick="() => WatchFeatured(item)" title="Assistir @item.Title">
+                                <img src="@item.ImageUrl" alt="Capa de @item.Title" loading="lazy" />
+                                <span class="movie-info"><strong>@item.Title</strong><small>@item.Provider</small></span>
+                            </button>
+                        }
+                        @* O cadastro manual existe apenas nas configurações avançadas. *@
+                    </div>
+                }
+                else
+                {
+                    <p class="muted">@(CatalogCredentials.IsConfigured ? "Nenhum título com link direto encontrado ainda. Você pode atualizar o catálogo nas Configurações." : "Selecione seus streamings na aba Apps para ver apenas os filmes e séries disponíveis neles.")</p>
+                }
+            </section>
+
+            @foreach (var row in GenreRows)
+            {
+                <section class="content-section genre-section" @key="row.Name" aria-label="@row.Name">
+                    <div class="section-heading"><h2>@row.Name</h2>
+                        @if (row.Titles.Count > 0) { <button class="apps-view-all" @onclick="() => ToggleGenreExpanded(row.Name)">@(ExpandedGenres.Contains(row.Name) ? "Ver menos" : "Ver todos") <span aria-hidden="true">›</span></button> }
+                    </div>
+                    @if (row.Titles.Count == 0)
+                    {
+                        <div class="genre-empty" role="status">Catálogo desta categoria sendo atualizado.</div>
+                    }
+                    else
+                    {
+                    <div class="movie-row genre-row @(ExpandedGenres.Contains(row.Name) ? "movie-row-expanded" : "")">
+                        @foreach (var item in row.Titles)
+                        {
+                            <button @key="item.RotationKey" class="movie-card" @onclick="() => WatchFeatured(item)" title="Assistir @item.Title">
+                                <img src="@item.ImageUrl" alt="Capa de @item.Title" loading="lazy" />
+                                <span class="movie-info"><strong>@item.Title</strong><small>@item.Provider</small></span>
+                            </button>
+                        }
+                    </div>
+                    }
+                </section>
+            }
+        </main>
+    }
+    else if (Tab == "apps")
+    {
+        <main class="inner-page apps-page">
+            <div class="apps-page-header">
+                <div>
+                    <div class="page-eyebrow">SEUS ATALHOS</div>
+                    <h1>Apps<span class="accent-period">.</span></h1>
+                    <p class="apps-page-subtitle">Sites e programas reunidos em um lugar. Fixe seus favoritos no Início.</p>
+                </div>
+                <button class="primary-btn apps-new-button" @onclick="NewAppForm">
+                    <span aria-hidden="true">＋</span> Novo aplicativo
+                </button>
+            </div>
+            <div class="apps-management-grid">
+                <section class="apps-library" aria-label="Aplicativos cadastrados">
+                    <div class="apps-library-heading"><h2>Biblioteca</h2><span>@Apps.Count aplicativos</span></div>
+                    <div class="apps-library-grid">
+                        @foreach (var app in Apps)
+                        {
+                            <article class="apps-library-card" @key="app.Id">
+                                <button class="apps-library-open" title="Abrir @app.Name" @onclick="() => OpenApp(app)">
+                                    <AppArtwork App="app" />
+                                    <strong>@app.Name</strong>
+                                    <small>@(app.Kind == "web" ? "Site" : "Windows")</small>
+                                </button>
+                                <div class="apps-library-actions">
+                                    <button class="@(app.PinnedToHome ? "app-pin-active" : "")"
+                                            aria-pressed="@app.PinnedToHome"
+                                            title="@(app.PinnedToHome ? "Desafixar do Início" : "Fixar no Início")"
+                                            @onclick="() => ToggleAppPinnedAsync(app)">
+                                        <span aria-hidden="true">@(app.PinnedToHome ? "★" : "☆")</span>
+                                        @(app.PinnedToHome ? "Fixado" : "Fixar")
+                                    </button>
+                                    @if (app.Kind == "web")
+                                    {
+                                        <button class="@(app.IncludeInFeatured ? "app-streaming-active" : "")"
+                                                title="@(app.IncludeInFeatured ? "Não incluir nos destaques" : "Usar este streaming nos destaques")"
+                                                aria-pressed="@app.IncludeInFeatured"
+                                                @onclick="() => ToggleFeaturedStreamingAsync(app)">
+                                            @(app.IncludeInFeatured ? "✓ Destaques" : "+ Destaques")
+                                        </button>
+                                    }
+                                    <button title="Editar @app.Name" @onclick="() => EditAppForm(app)">Editar</button>
+                                    @if (!app.IsBuiltIn)
+                                    {
+                                        <button class="app-remove-action" title="Remover @app.Name"
+                                                @onclick="() => PendingRemoveAppId = app.Id">Remover</button>
+                                    }
+                                </div>
+                                @if (PendingRemoveAppId == app.Id)
+                                {
+                                    <div class="app-delete-confirm" role="group" aria-label="Confirmar remoção de @app.Name">
+                                        <span>Remover @app.Name?</span>
+                                        <button @onclick="() => RemoveApp(app.Id)">Confirmar</button>
+                                        <button @onclick="() => PendingRemoveAppId = null">Cancelar</button>
+                                    </div>
+                                }
+                            </article>
+                        }
+                    </div>
+                </section>
+                @if (ShowAppForm)
+                {
+                    <section class="apps-editor form-panel" aria-label="Cadastro de aplicativo">
+                        <div class="apps-editor-heading">
+                            <h2>@(EditingAppId is null ? "Adicionar aplicativo" : "Editar aplicativo")</h2>
+                            <button class="apps-editor-close" @onclick="CloseAppForm" aria-label="Fechar formulário">×</button>
+                        </div>
+                        <div class="apps-icon-preview">
+                            @if (!string.IsNullOrWhiteSpace(DraftIconDataUrl))
+                            {
+                                <img src="@DraftIconDataUrl" alt="Prévia da logo" />
+                            }
+                            else
+                            {
+                                <span aria-hidden="true">@(NewAppKind == "desktop" ? "▣" : "↗")</span>
+                            }
+                            <small>@(IconLoading ? "Buscando logo…" : "Logo do atalho")</small>
+                        </div>
+                        <label>Tipo de aplicativo
+                            <select @bind="NewAppKind">
+                                <option value="web">Site / WebView2</option>
+                                <option value="desktop">Programa Windows (.exe)</option>
+                            </select>
+                        </label>
+                        <label>@(NewAppKind == "web" ? "Endereço (URL)" : "Caminho do executável")
+                            <input @bind="NewAppTarget" @onblur="ResolveIconForFormAsync"
+                                   placeholder="@(NewAppKind == "web" ? "https://site.com" : @"C:\Programas\Programa.exe")"
+                                   autocomplete="off" />
+                        </label>
+                        <label>Nome do atalho
+                            <input @bind="NewAppName" maxlength="70" placeholder="Nome que aparecerá no Launcher" />
+                        </label>
+                        <label class="apps-pin-check">
+                            <input type="checkbox" @bind="NewAppPinned" /> Fixar no Início
+                        </label>
+                        @if (NewAppKind == "web")
+                        {
+                            <div class="apps-streaming-config">
+                                <label class="apps-pin-check">
+                                    <input type="checkbox" @bind="NewAppFeatured" /> Usar este streaming nos destaques
+                                </label>
+                                <small>Filmes e séries deste serviço serão encontrados automaticamente, apenas quando houver disponibilidade no Brasil e link direto na API.</small>
+                                <label>Serviço correspondente no Watchmode
+                                    <select @bind="NewAppSourceId">
+                                        <option value="0">Selecione o streaming…</option>
+                                        @foreach (var source in AvailableStreamingProviders)
+                                        {
+                                            <option value="@source.Id">@source.Name</option>
+                                        }
+                                    </select>
+                                </label>
+                                @if (LoadingStreamingProviders)
+                                {
+                                    <small>Carregando lista de serviços disponíveis no Brasil…</small>
+                                }
+                                else if (AvailableStreamingProviders.Count == 0)
+                                {
+                                    <small>Não foi possível obter os serviços do Watchmode. A Home continuará funcionando normalmente.</small>
+                                    <button class="secondary-btn" @onclick="LoadStreamingProvidersAsync">Tentar carregar serviços</button>
+                                }
+                            </div>
+                        }
+                        @if (!string.IsNullOrWhiteSpace(AppError))
+                        {
+                            <p class="form-message" role="alert">@AppError</p>
+                        }
+                        <div class="apps-editor-buttons">
+                            <button class="primary-btn" disabled="@SavingApp" @onclick="SaveAppAsync">
+                                @(SavingApp ? "Salvando…" : EditingAppId is null ? "Adicionar" : "Salvar alterações")
+                            </button>
+                            <button class="secondary-btn" @onclick="CloseAppForm">Cancelar</button>
+                        </div>
+                    </section>
+                }
+            </div>
+        </main>
+    }
+    else if (Tab == "news")
+    {
+        <main class="inner-page news-page">
+            <div class="news-intro">
+                <div>
+                    <div class="page-eyebrow">SUA CENTRAL DE INFORMAÇÕES</div>
+                    <h1>Notícias<span class="accent-period">.</span></h1>
+                        </div>
+                <div class="news-update-area">
+                    <span class="news-updated">@(NewsUpdatedAt is null ? "Aguardando primeira atualização" : $"Atualizado em {NewsUpdatedAt.Value.ToLocalTime():dd/MM 'às' HH:mm}")</span>
+                    <button class="news-refresh-button" disabled="@NewsLoading" @onclick="() => LoadNewsAsync(true)" aria-label="Atualizar notícias agora">
+                        <span aria-hidden="true">↻</span> @(NewsLoading ? "Atualizando…" : "Atualizar agora")
+                    </button>
+                </div>
+            </div>
+            <nav class="news-filters" aria-label="Filtrar notícias por assunto">
+                @foreach (var category in NewsCategories)
+                {
+                    <button class="@(NewsCategory == category ? "news-filter-active" : "")" aria-pressed="@(NewsCategory == category)"
+                            @onclick="() => SetNewsCategory(category)">@category</button>
+                }
+            </nav>
+            @if (News.Count == 0 && NewsLoading)
+            {
+                <div class="news-loading" role="status">Buscando as últimas notícias e suas imagens…</div>
+            }
+            else if (News.Count == 0)
+            {
+                <div class="empty-state">Nenhuma notícia disponível no momento. Verifique sua conexão e tente atualizar novamente.</div>
+            }
+            else if (VisibleNews.Count == 0)
+            {
+                <div class="empty-state">Ainda não há notícias nesta categoria. Experimente selecionar “Todas”.</div>
+            }
+            else
+            {
+                var lead = VisibleNews.FirstOrDefault(x => !string.IsNullOrWhiteSpace(x.ImageUrl)) ?? VisibleNews[0];
+                <div class="news-section-heading">
+                    <div><span class="news-heading-overline">DESTAQUE</span><h2>Em primeiro plano</h2></div>
+                    <span class="news-count">@VisibleNews.Count matérias disponíveis</span>
+                </div>
+                <section class="news-feature" aria-label="Notícia em destaque">
+                    <button class="news-feature-photo" @onclick="() => OpenNews(lead)" aria-label="Ler notícia: @lead.Title">
+                        <NewsImage ImageUrl="@lead.ImageUrl" Category="@lead.Category" CssClass="news-feature-image" />
+                        <span class="news-feature-photo-label">MATÉRIA EM DESTAQUE</span>
+                    </button>
+                    <div class="news-feature-copy">
+                        <div class="news-byline"><span class="source-indicator"></span>@lead.Source <span class="news-dot">·</span> @lead.Category</div>
+                        <h2>@lead.Title</h2>
+                        @if (!string.IsNullOrWhiteSpace(lead.Summary))
+                        {
+                            <p>@lead.Summary</p>
+                        }
+                        <div class="news-feature-footer">
+                            <span>@FormatNewsTime(lead.PublishedAt)</span>
+                            <button class="news-read-button" @onclick="() => OpenNews(lead)">Ler matéria <span aria-hidden="true">↗</span></button>
+                        </div>
+                    </div>
+                </section>
+                <div class="news-section-heading news-latest-heading">
+                    <div><span class="news-heading-overline">ACOMPANHE</span><h2>Últimas notícias</h2></div>
+                    <span class="news-count">BBC News Brasil · g1</span>
+                </div>
+                <div class="news-grid">
+                    @foreach (var story in VisibleNews.Where(x => x.Url != lead.Url).Take(24))
+                    {
+                        <button class="news-tile" @onclick="() => OpenNews(story)" aria-label="Ler notícia: @story.Title">
+                            <NewsImage ImageUrl="@story.ImageUrl" Category="@story.Category" />
+                            <div class="news-card-copy">
+                                <div class="news-source"><span class="source-indicator"></span>@story.Source <span class="news-dot">·</span> @story.Category</div>
+                                <h3>@story.Title</h3>
+                                <span class="news-bottom">@FormatNewsTime(story.PublishedAt) <b aria-hidden="true">↗</b></span>
+                            </div>
+                        </button>
+                    }
+                </div>
+            }
+        </main>
+    }
+    else if (Tab == "weather")
+    {
+        <main class="inner-page weather-page">
+            <div class="page-eyebrow">PREVISÃO DO TEMPO</div>
+            <h1>Clima<span class="accent-period">.</span></h1>
+            <p class="page-subtitle">Condições meteorológicas atualizadas · Cidade inicial: Bariri, SP</p>
+            @if (Weather is null)
+            {
+                <div class="empty-state">Dados meteorológicos indisponíveis. Conecte-se à internet para consultar a previsão.</div>
+            }
+            else
+            {
+                <div class="weather-main">
+                    <div class="weather-overview">
+                        <div class="weather-place">⌖ @Weather.City</div>
+                        <div class="weather-large-temp">@Weather.Temperature°</div>
+                        <h2>@TVLauncher.App.Services.WeatherService.Describe(Weather.WeatherCode)</h2>
+                        <div class="muted">Atualizado às @Weather.UpdatedAt.ToString("HH:mm")</div>
+                    </div>
+                    <div class="weather-facts">
+                        <div><span>Sensação térmica</span><strong>@Weather.FeelsLike°C</strong></div>
+                        <div><span>Umidade</span><strong>@Weather.Humidity%</strong></div>
+                        <div><span>Vento</span><strong>@Weather.WindKmh km/h</strong></div>
+                    </div>
+                </div>
+                <div class="page-header-line"><h2>Próximos dias</h2></div>
+                <div class="forecast-grid">
+                    @foreach (var day in Weather.Days)
+                    {
+                        <div class="forecast-day"><span>@day.Date.ToString("ddd", new CultureInfo("pt-BR"))</span><strong>@day.Maximum° <small>@day.Minimum°</small></strong><em>☂ @day.RainProbability%</em></div>
+                    }
+                </div>
+            }
+            <p class="attribution">Fonte: Open-Meteo.</p>
+        </main>
+    }
+    else if (Tab == "settings")
+    {
+        <main class="inner-page settings-page">
+            <div class="page-eyebrow">PERSONALIZAÇÃO</div>
+            <h1>Seu espaço<span class="accent-period">.</span></h1>
+            <p class="page-subtitle">Gerencie o catálogo e as configurações do TW Launcher.</p>
+            <section class="tw-update-panel" aria-label="Atualizações do TW Launcher">
+                <div>
+                    <div class="page-eyebrow">SISTEMA</div>
+                    <h2>Atualizações do TW Launcher</h2>
+                    <p>Versão instalada: <strong>@Updater.Version</strong></p>
+                    <p class="tw-update-status" role="status">@Updater.Status</p>
+                    @if (Updater.Busy && Updater.Percent > 0)
+                    {
+                        <progress class="tw-update-progress" max="100" value="@Updater.Percent"></progress>
+                        <small>@Updater.Percent%</small>
+                    }
+                </div>
+                <div class="tw-update-actions">
+                    <button class="secondary-btn" disabled="@(!Updater.IsInstalled || Updater.Busy || Updater.Ready)"
+                            @onclick="() => Updater.CheckAsync(true)">
+                        @(Updater.Busy ? "Verificando..." : "Verificar atualizações")
+                    </button>
+                    @if (Updater.Ready)
+                    {
+                        <button class="primary-btn" @onclick="RestartForUpdate">Reiniciar e instalar</button>
+                    }
+                </div>
+            </section>
+            <section class="trending-setup auto-catalog-setup">
+                <div>
+                    <div class="page-eyebrow">AUTOMÁTICO · BRASIL</div>
+                    <h2>Seu catálogo se atualiza sozinho</h2>
+                    <p>Filmes e séries populares são buscados automaticamente, com capas, trailers disponíveis e links diretos dos streamings. Nenhum título precisa ser cadastrado.</p>
+                    <p class="catalog-status">@(CatalogCredentials.Options.CatalogMode == "reader" ? "● Modo leitor: lê o catálogo compartilhado e não consulta as APIs." : CatalogCredentials.IsConfigured ? "● Fontes configuradas. Atualização automática habilitada." : "○ APIs opcionais: a Home e seus aplicativos continuam disponíveis normalmente.")</p>
+                    <p>Configure sem abrir o aplicativo em: <code>%LOCALAPPDATA%\TVLauncher\api-keys.json</code>. Reinicie o Launcher para aplicar alterações.</p>
+                    <p>Modos disponíveis no JSON: <code>standalone</code> (local), <code>publisher</code> (publica catálogo na rede) e <code>reader</code> (somente lê da rede).</p>
+                    @if (!string.IsNullOrWhiteSpace(TrendingCatalogService.LastError))
+                    {
+                        <div class="form-message" role="status">@TrendingCatalogService.LastError</div>
+                    }
+                </div>
+                <div class="catalog-connection">
+                    <label>Chave Watchmode — necessária uma única vez
+                        <input type="password" @bind="NewWatchmodeKey" autocomplete="off" placeholder="@(CatalogCredentials.IsConfigured ? "Chave salva com segurança · deixe vazio para manter" : "Cole sua chave Watchmode")" />
+                    </label>
+                    <label>Token TMDB — opcional (melhora imagens e trailers)
+                        <input type="password" @bind="NewTmdbKey" autocomplete="off" placeholder="Opcional: API Read Access Token" />
+                    </label>
+                    <small>Obtenha a chave em <a href="https://api.watchmode.com/requestApiKey/" target="_blank" rel="noopener noreferrer">Watchmode</a> (selecionando Brasil). O token opcional está em <a href="https://www.themoviedb.org/settings/api" target="_blank" rel="noopener noreferrer">TMDB</a>. As chaves são protegidas localmente no Windows.</small>
+                    <div class="catalog-buttons">
+                        <button class="primary-btn" disabled="@CatalogRefreshing" @onclick="SaveCatalogSettingsAsync">Conectar e carregar automaticamente</button>
+                        <button class="secondary-btn" disabled="@(!CatalogCredentials.IsConfigured || CatalogRefreshing)" @onclick="() => RefreshCatalogAsync(true)">@(CatalogRefreshing ? "Buscando títulos…" : "Atualizar agora")</button>
+                    </div>
+                    @if (!string.IsNullOrWhiteSpace(CatalogSetupError)) { <div class="form-message" role="alert">@CatalogSetupError</div> }
+                </div>
+            </section>
+            <details class="manual-content-settings">
+                <summary>Opções avançadas · destaques manuais (opcionais)</summary>
+            <div class="settings-columns">
+                <section class="form-panel">
+                    <h2>Adicionar destaque</h2>
+                    <label>Título<input @bind="NewTitle" placeholder="Filme ou série" maxlength="120" /></label>
+                    <label>Descrição<input @bind="NewSynopsis" placeholder="Breve sinopse" maxlength="450" /></label>
+                    <label>Link direto para assistir<input @bind="NewDirectUrl" placeholder="https://.../title/..." /></label>
+                    <label>ID do vídeo no YouTube <small>(opcional, 11 caracteres)</small><input @bind="NewYoutubeId" placeholder="Ex.: brLbwajyGNI" /></label>
+                    <label class="check-line"><input type="checkbox" @bind="ConfirmLink" /> Confirmo que testei o link direto para este título.</label>
+                    <button class="primary-btn form-submit" @onclick="AddFeatured">＋ Adicionar destaque</button>
+                    @if (!string.IsNullOrEmpty(FeatureError)) { <div class="form-message">@FeatureError</div> }
+                    <div class="settings-list">
+                        @foreach (var title in ManualFeatured)
+                        {
+                            <div class="settings-row"><span>@title.Title</span><button @onclick="() => RemoveFeatured(title.Id)">Remover</button></div>
+                        }
+                    </div>
+                </section>
+            </div>
+            </details>
+            <div class="source-credits">
+                Dados de catálogo: <a href="https://www.watchmode.com/" target="_blank" rel="noopener noreferrer">Watchmode</a>.
+                Imagens e metadados: <a href="https://www.themoviedb.org/" target="_blank" rel="noopener noreferrer">TMDB</a>, quando configurado.
+                Este produto não é endossado ou certificado pela TMDB.
+            </div>
+            <div class="system-actions">
+                <button class="secondary-btn" @onclick="OpenDesktop">Acessar área de trabalho</button>
+                <span>Volte ao Launcher usando <kbd>Ctrl + Alt + Home</kbd></span>
+            </div>
+        </main>
+    }
+
+    @if (!string.IsNullOrWhiteSpace(Notification))
+    {
+        <div class="notification" role="alert"><span>@Notification</span><button @onclick="() => Notification = null" aria-label="Fechar aviso">×</button></div>
+    }
+    </div>
+</div>
+
+@code {
+    // @key must be unique among siblings. Both hero blocks change with the same title,
+    // but cannot share the same render-tree key under the same parent.
+    private static string HeroContentKey(FeaturedTitle title) => $"hero-content:{title.RotationKey}";
+    private static string HeroShowcaseKey(FeaturedTitle title) => $"hero-showcase:{title.RotationKey}";
+
+    private string Tab = "home";
+    private string TabTitle => Tab switch
+    {
+        "home" => "Para assistir",
+        "apps" => "Seus aplicativos",
+        "news" => "Notícias",
+        "weather" => "Previsão do tempo",
+        _ => "Configurações"
+    };
+    private bool ShowFeaturedDetails;
+    private bool ShowAllPopular;
+    private readonly HashSet<string> ExpandedGenres = new(StringComparer.OrdinalIgnoreCase);
+    private bool ShowSearch;
+    private string SearchText = "";
+    private IReadOnlyList<FeaturedTitle> SearchResults => string.IsNullOrWhiteSpace(SearchText)
+        ? []
+        : Featured.Where(x => x.Title.Contains(SearchText.Trim(), StringComparison.OrdinalIgnoreCase)
+                            || x.Provider.Contains(SearchText.Trim(), StringComparison.OrdinalIgnoreCase))
+                  .GroupBy(x => x.RotationKey).Select(x => x.First()).Take(20).ToArray();
+
+    private void ToggleSearch() { ShowSearch = !ShowSearch; if (!ShowSearch) SearchText = ""; }
+    private void CloseSearch() { ShowSearch = false; SearchText = ""; }
+    private async Task OpenSearchResultAsync(FeaturedTitle title) { CloseSearch(); await WatchFeatured(title); }
+    private void ToggleGenreExpanded(string genre)
+    {
+        if (!ExpandedGenres.Add(genre)) ExpandedGenres.Remove(genre);
+    }
+    private static string HomeAppBrand(LauncherApp app)
+    {
+        var name = app.Name.ToLowerInvariant();
+        if (name.Contains("globoplay")) return "brand-globoplay";
+        if (name.Contains("mercado play") || name.Contains("mercadoplay")) return "brand-mercadoplay";
+        if (name.Contains("disney")) return "brand-disney";
+        if (name.Contains("max")) return "brand-max";
+        if (name.Contains("netflix")) return "brand-netflix";
+        if (name.Contains("prime")) return "brand-prime";
+        if (name.Contains("youtube")) return "brand-youtube";
+        if (name.Contains("spotify")) return "brand-spotify";
+        return "brand-default";
+    }
+    private IReadOnlyList<LauncherApp> Apps = [];
+    private IReadOnlyList<FeaturedTitle> Featured = [];
+    private IReadOnlyList<FeaturedTitle> ManualFeatured = [];
+    private bool SelectingFeature;
+    private bool CarouselExhausted;
+    private IReadOnlyList<GenreRow> GenreRows = [];
+    private sealed record GenreRow(string Name, IReadOnlyList<FeaturedTitle> Titles);
+    private bool CatalogRefreshing;
+    private DateTimeOffset NextCatalogRefresh = DateTimeOffset.UtcNow.AddMinutes(10);
+    private IReadOnlyList<NewsItem> News = [];
+    private WeatherSnapshot? Weather;
+    private bool NewsLoading;
+    private bool NewsRequestInProgress;
+    private DateTimeOffset? NewsUpdatedAt;
+    private DateTimeOffset NextNewsRefresh = DateTimeOffset.UtcNow.AddMinutes(15);
+    private string NewsCategory = "Todas";
+    private static readonly string[] NewsCategories = ["Todas", "Brasil", "Mundo", "Tecnologia", "Economia", "Geral"];
+    private IReadOnlyList<NewsItem> VisibleNews => NewsCategory == "Todas" ? News :
+        News.Where(x => x.Category == NewsCategory).ToArray();
+    private void SetNewsCategory(string category) => NewsCategory = category;
+    private static string FormatNewsTime(DateTimeOffset? date) => date is null
+        ? "Data não informada" : date.Value.ToLocalTime().ToString("dd/MM · HH:mm");
+    private DateTime Now = DateTime.Now;
+    private int ActiveFeature;
+    private bool HeroVisible;
+    private bool InteractingWithHero;
+    private bool PlayTrailer => Tab == "home" && !SuspendedForExternalApp && HeroVisible && InteractingWithHero;
+    private DateTimeOffset LastSlideChange = DateTimeOffset.UtcNow;
+    private ElementReference HeroElement;
+    private ElementReference HeroSelectorElement;
+    private DotNetObjectReference<AppShell>? SelfReference;
+    private bool ObserverAttached;
+    private bool SuspendedForExternalApp;
+    private DateTimeOffset NextWeatherRefresh = DateTimeOffset.UtcNow.AddMinutes(30);
+    private CancellationTokenSource Life = new();
+    private string? Notification;
+    private string NewAppName = "", NewAppKind = "web", NewAppTarget = "", AppError = "";
+    private bool NewAppPinned, NewAppFeatured;
+    private int NewAppSourceId;
+    private IReadOnlyList<StreamingProvider> AvailableStreamingProviders = [];
+    private bool LoadingStreamingProviders;
+    private string? DraftIconDataUrl;
+    private string? DraftIconTarget;
+    private int? EditingAppId, PendingRemoveAppId;
+    private bool ShowAppForm, IconLoading, SavingApp, IconsLoading;
+    private string NewTitle = "", NewSynopsis = "", NewDirectUrl = "", NewYoutubeId = "", FeatureError = "";
+    private bool ConfirmLink;
+    private string NewWatchmodeKey = "", NewTmdbKey = "", CatalogSetupError = "";
+
+    protected override async Task OnInitializedAsync()
+    {
+        Updater.Changed += OnUpdaterChanged;
+        Host.HomeRestored += OnHomeRestored;
+        try
+        {
+            Apps = await Repository.GetAppsAsync();
+            _ = LoadAppIconsAsync();
+            ManualFeatured = await Repository.GetFeaturedAsync();
+            Featured = await Repository.GetHomeFeaturedAsync();
+            // Uma ordem aleatória é definida na entrada da Home e permanece fixa.
+            await EnterHomeAsync();
+        }
+        catch (Exception ex) { Notification = $"Erro ao carregar os dados: {ex.Message}"; }
+        _ = RefreshWeatherAsync();
+        _ = InitializeCatalogMetadataAsync();
+        _ = TickAsync(Life.Token);
+    }
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (Tab == "home" && Featured.Count > 0)
+        {
+            try { await Js.InvokeVoidAsync("tvLauncherHero.ensureActiveIndicatorVisible"); }
+            catch (JSException) { }
+        }
+        if (Tab == "home" && !SuspendedForExternalApp && Featured.Count > 0 && !ObserverAttached)
+        {
+            SelfReference ??= DotNetObjectReference.Create(this);
+            try
+            {
+                await Js.InvokeVoidAsync("tvLauncherHero.register", HeroElement, HeroSelectorElement, SelfReference);
+                ObserverAttached = true;
+            }
+            catch (JSException) { /* Sem JS: o banner mantém a imagem estática. */ }
+        }
+    }
+
+    [JSInvokable]
+    public async Task HeroVisibilityChanged(bool visible)
+    {
+        if (HeroVisible == visible) return;
+        HeroVisible = visible;
+        if (visible) LastSlideChange = DateTimeOffset.UtcNow;
+        await InvokeAsync(StateHasChanged);
+    }
+
+    // O navegador só cria o iframe quando o banner ou o seletor está em hover/foco.
+    // Reinicia a contagem de dez segundos quando o usuário termina de interagir.
+    [JSInvokable]
+    public async Task HeroInteractionChanged(bool interacting)
+    {
+        if (InteractingWithHero == interacting) return;
+        InteractingWithHero = interacting;
+        LastSlideChange = DateTimeOffset.UtcNow;
+        await InvokeAsync(StateHasChanged);
+    }
+
+    private async Task PreviewFeaturedAsync(int index)
+    {
+        if (index != ActiveFeature) await SetFeaturedAsync(index);
+    }
+
+    private async Task TickAsync(CancellationToken token)
+    {
+        try
+        {
+            using var timer = new PeriodicTimer(TimeSpan.FromSeconds(1));
+            while (await timer.WaitForNextTickAsync(token))
+            {
+                await InvokeAsync(() =>
+                {
+                    Now = DateTime.Now;
+                    if (DateTimeOffset.UtcNow >= NextWeatherRefresh)
+                    {
+                        NextWeatherRefresh = DateTimeOffset.UtcNow.AddMinutes(30);
+                        _ = RefreshWeatherAsync();
+                    }
+                    if (DateTimeOffset.UtcNow >= NextCatalogRefresh)
+                    {
+                        NextCatalogRefresh = DateTimeOffset.UtcNow.AddMinutes(10);
+                        _ = RefreshCatalogAsync();
+                    }
+                    if (Tab == "news" && DateTimeOffset.UtcNow >= NextNewsRefresh)
+                    {
+                        NextNewsRefresh = DateTimeOffset.UtcNow.AddMinutes(15);
+                        _ = LoadNewsAsync();
+                    }
+                    if (Tab == "home" && HeroVisible && !InteractingWithHero && !SuspendedForExternalApp &&
+                        Featured.Count > 1 && !CarouselExhausted && !SelectingFeature &&
+                        DateTimeOffset.UtcNow - LastSlideChange >= TimeSpan.FromSeconds(10))
+                    {
+                        LastSlideChange = DateTimeOffset.UtcNow;
+                        _ = NextFeaturedAsync();
+                    }
+                    StateHasChanged();
+                });
+            }
+        }
+        catch (OperationCanceledException) { }
+    }
+
+    private async Task RefreshWeatherAsync()
+    {
+        var weather = await WeatherService.GetAsync();
+        await InvokeAsync(() => { Weather = weather; StateHasChanged(); });
+    }
+
+    private async Task LoadNewsAsync(bool force = false)
+    {
+        if (NewsRequestInProgress) return;
+        NewsRequestInProgress = true;
+        NewsLoading = true;
+        try
+        {
+            // Exibe imediatamente o cache SQLite, sem esperar todas as fontes online.
+            if (News.Count == 0)
+            {
+                var saved = await NewsService.GetCachedAsync(Life.Token);
+                await InvokeAsync(() =>
+                {
+                    News = saved.Items;
+                    NewsUpdatedAt = saved.UpdatedAt;
+                    StateHasChanged();
+                });
+            }
+            var result = await NewsService.GetAsync(force, Life.Token);
+            await InvokeAsync(() =>
+            {
+                News = result.Items;
+                NewsUpdatedAt = result.UpdatedAt;
+                if (result.IsStale && News.Count > 0)
+                    Notification = "Não foi possível atualizar agora. Exibindo notícias salvas.";
+                NextNewsRefresh = DateTimeOffset.UtcNow.AddMinutes(15);
+            });
+        }
+        catch (OperationCanceledException) when (Life.IsCancellationRequested) { }
+        catch (Exception ex)
+        {
+            await InvokeAsync(() => Notification = $"Não foi possível atualizar notícias: {ex.Message}");
+        }
+        finally
+        {
+            NewsLoading = false;
+            NewsRequestInProgress = false;
+            if (!Life.IsCancellationRequested) await InvokeAsync(StateHasChanged);
+        }
+    }
+
+    private async Task SwitchTab(string newTab)
+    {
+        if (Tab == "home" && newTab != "home")
+        {
+            HeroVisible = false;
+            InteractingWithHero = false;
+            if (ObserverAttached)
+            {
+                try { await Js.InvokeVoidAsync("tvLauncherHero.unregister"); } catch (JSException) { }
+                ObserverAttached = false;
+            }
+        }
+        var returningToHome = Tab != "home" && newTab == "home";
+        ShowFeaturedDetails = false;
+        CloseSearch();
+        Tab = newTab;
+        if (returningToHome) await EnterHomeAsync();
+        if (newTab == "apps")
+        {
+            _ = LoadAppIconsAsync();
+            _ = LoadStreamingProvidersAsync();
+        }
+        if (newTab == "news") _ = LoadNewsAsync();
+        if (newTab == "weather") await RefreshWeatherAsync();
+    }
+
+    private void RebuildGenreRows()
+    {
+        // A mesma lista de links diretos da Home alimenta todas as categorias.
+        // Gêneros não verificados não geram fileiras fictícias.
+        GenreRows = ContentGenres.DisplayOrder
+            .Select(genre => new GenreRow(genre,
+                (IReadOnlyList<FeaturedTitle>)Featured
+                    .Where(x => ContentGenres.HasGenre(x.Genres, genre))
+                    .ToArray()))
+            .Where(row => row.Titles.Count > 0 ||
+                (Featured.Count > 0 && ContentGenres.DisplayOrder.Take(6).Contains(row.Name)))
+            .ToArray();
+    }
+
+    private async Task EnterHomeAsync()
+    {
+        // Somente a entrada na Home cria outra sequência aleatória.
+        Featured = RotationService.ShuffleForHome(Featured);
+        ActiveFeature = 0;
+        ShowFeaturedDetails = false;
+        CarouselExhausted = Featured.Count <= 1;
+        InteractingWithHero = false;
+        LastSlideChange = DateTimeOffset.UtcNow;
+        RebuildGenreRows();
+        if (Featured.Count > 0) await RecordCurrentFeatureAsync();
+    }
+
+    private async Task RecordCurrentFeatureAsync()
+    {
+        LastSlideChange = DateTimeOffset.UtcNow;
+        try { await Repository.RecordFeaturedViewAsync(Featured[ActiveFeature].RotationKey, Life.Token); }
+        catch (OperationCanceledException) when (Life.IsCancellationRequested) { }
+    }
+
+    // Avança sempre para o índice seguinte da sequência fixa: 1, 2, 3 ... N.
+    // A rotação automática termina no último título; o botão Próximo permite voltar ao primeiro.
+    private async Task NextFeaturedAsync(bool manual = false)
+    {
+        if (SelectingFeature || Featured.Count == 0 || Life.IsCancellationRequested) return;
+        if (!manual && ActiveFeature == Featured.Count - 1)
+        {
+            CarouselExhausted = true;
+            return;
+        }
+        await SetFeaturedAsync((ActiveFeature + 1) % Featured.Count);
+    }
+
+    private async Task SetFeaturedAsync(int index)
+    {
+        if (SelectingFeature || Featured.Count == 0 || Life.IsCancellationRequested) return;
+        SelectingFeature = true;
+        try
+        {
+            ActiveFeature = (index % Featured.Count + Featured.Count) % Featured.Count;
+            ShowFeaturedDetails = false;
+            CarouselExhausted = ActiveFeature == Featured.Count - 1;
+            await RecordCurrentFeatureAsync();
+        }
+        finally
+        {
+            SelectingFeature = false;
+            if (!Life.IsCancellationRequested) await InvokeAsync(StateHasChanged);
+        }
+    }
+
+    private Task PreviousFeaturedAsync() => SetFeaturedAsync(ActiveFeature - 1);
+
+    private async Task SaveCatalogSettingsAsync()
+    {
+        CatalogSetupError = "";
+        try
+        {
+            var key = string.IsNullOrWhiteSpace(NewWatchmodeKey) ? CatalogCredentials.WatchmodeKey : NewWatchmodeKey;
+            var tmdb = string.IsNullOrWhiteSpace(NewTmdbKey) ? CatalogCredentials.TmdbKey : NewTmdbKey;
+            CatalogCredentials.Save(key, tmdb);
+            NewWatchmodeKey = NewTmdbKey = "";
+            Notification = "Chave armazenada. Consultando a fonte para validar e carregar o catálogo…";
+            await RefreshCatalogAsync(true);
+            if (Featured.Count > 0) await SwitchTab("home");
+        }
+        catch (Exception ex) { CatalogSetupError = $"Não foi possível salvar: {ex.Message}"; }
+    }
+
+    private async Task InitializeCatalogMetadataAsync()
+    {
+        if (!TrendingCatalogService.IsConfigured || Life.IsCancellationRequested) return;
+        // Primeiro sincroniza novas tendências (respeita o intervalo de 72h),
+        // depois enriquece registros antigos, sem recomeçar o carrossel.
+        await RefreshCatalogAsync();
+        try
+        {
+            var updated = await TrendingCatalogService.EnrichExistingCatalogAsync(Life.Token);
+            if (updated > 0 && !Life.IsCancellationRequested)
+                await ReloadCatalogPreservingOrderAsync();
+        }
+        catch (OperationCanceledException) when (Life.IsCancellationRequested) { }
+        catch (Exception) { /* Home permanece funcional com catálogo em cache. */ }
+    }
+
+    private async Task ReloadCatalogPreservingOrderAsync()
+    {
+        var updated = await Repository.GetHomeFeaturedAsync();
+        // Um catálogo vazio desmonta o banner e seu observer antigo.
+        if (updated.Count == 0 && ObserverAttached)
+        {
+            try { await Js.InvokeVoidAsync("tvLauncherHero.unregister"); }
+            catch (JSException) { }
+            ObserverAttached = false;
+            HeroVisible = false;
+        }
+        await InvokeAsync(() =>
+        {
+            var currentKey = Featured.Count > 0 ? Featured[ActiveFeature].RotationKey : null;
+            var latest = updated.ToDictionary(x => x.RotationKey, StringComparer.Ordinal);
+            var preserved = Featured.Where(x => latest.ContainsKey(x.RotationKey))
+                .Select(x => latest[x.RotationKey]).ToList();
+            var existingKeys = preserved.Select(x => x.RotationKey).ToHashSet(StringComparer.Ordinal);
+            preserved.AddRange(RotationService.ShuffleForHome(updated
+                .Where(x => !existingKeys.Contains(x.RotationKey)).ToArray()));
+            Featured = preserved;
+            var index = Array.FindIndex(Featured.ToArray(), x => x.RotationKey == currentKey);
+            ActiveFeature = index >= 0 ? index : 0;
+            CarouselExhausted = Featured.Count <= 1 || ActiveFeature == Featured.Count - 1;
+            RebuildGenreRows();
+            StateHasChanged();
+        });
+    }
+
+    private async Task RefreshCatalogAsync(bool force = false)
+    {
+        if (CatalogRefreshing || Life.IsCancellationRequested || !TrendingCatalogService.IsConfigured) return;
+        CatalogRefreshing = true;
+        try
+        {
+            var count = await TrendingCatalogService.RefreshAsync(force, Life.Token);
+            if (force)
+                Notification = count > 0 ? $"Catálogo atualizado: {count} títulos encontrados." :
+                    TrendingCatalogService.LastError ?? "Nenhum novo título encontrado. O catálogo salvo foi preservado.";
+            if (count > 0)
+            {
+                var currentKey = Featured.Count > 0 ? Featured[ActiveFeature].RotationKey : null;
+                var updated = await Repository.GetHomeFeaturedAsync();
+                await InvokeAsync(async () =>
+                {
+                    // Mantém a ordem já sorteada enquanto o usuário estiver na Home.
+                    // Apenas títulos novos entram no fim, em ordem aleatória entre si.
+                    var latest = updated.ToDictionary(x => x.RotationKey, StringComparer.Ordinal);
+                    var preserved = Featured.Where(x => latest.ContainsKey(x.RotationKey))
+                        .Select(x => latest[x.RotationKey]).ToList();
+                    var existingKeys = preserved.Select(x => x.RotationKey).ToHashSet(StringComparer.Ordinal);
+                    var additions = RotationService.ShuffleForHome(updated
+                        .Where(x => !existingKeys.Contains(x.RotationKey)).ToArray());
+                    preserved.AddRange(additions);
+                    Featured = preserved;
+                    var existing = Array.FindIndex(Featured.ToArray(), x => x.RotationKey == currentKey);
+                    ActiveFeature = existing >= 0 ? existing : 0;
+                    CarouselExhausted = Featured.Count <= 1 || ActiveFeature == Featured.Count - 1;
+                    RebuildGenreRows();
+                    LastSlideChange = DateTimeOffset.UtcNow;
+                    StateHasChanged();
+                });
+            }
+        }
+        catch (OperationCanceledException) when (Life.IsCancellationRequested) { }
+        catch (Exception ex)
+        {
+            // Mantém catálogo local funcionando mesmo se a API estiver fora do ar.
+            if (force) await InvokeAsync(() => Notification = $"Tendências indisponíveis: {ex.Message}");
+        }
+        finally
+        {
+            CatalogRefreshing = false;
+            NextCatalogRefresh = DateTimeOffset.UtcNow.AddMinutes(10);
+            if (!Life.IsCancellationRequested) await InvokeAsync(StateHasChanged);
+        }
+    }
+
+    private static string EmbedUrl(string id) => $"https://www.youtube.com/embed/{id}?autoplay=1&mute=1&playsinline=1&enablejsapi=1&controls=1&rel=0";
+    private async Task WatchFeatured(FeaturedTitle title) => await OpenWeb(title.DirectUrl, title.Title);
+    private async Task OpenApp(LauncherApp app)
+    {
+        await SuspendHeroAsync();
+        try
+        {
+            if (app.Kind == "desktop") await Host.OpenDesktopAsync(app.Target, app.Name);
+            else await Host.OpenWebAsync(app.Target, app.Name);
+        }
+        catch (Exception error)
+        {
+            Host.ReturnHome();
+            Notification = $"Não foi possível abrir {app.Name}: {error.Message}";
+        }
+    }
+    private async Task OpenWeb(string url, string title)
+    {
+        await SuspendHeroAsync();
+        try { await Host.OpenWebAsync(url, title); }
+        catch (Exception error)
+        {
+            Host.ReturnHome();
+            Notification = $"Não foi possível abrir o conteúdo: {error.Message}";
+        }
+    }
+    private async Task OpenNews(NewsItem item) => await OpenWeb(item.Url, item.Source);
+
+    private void NewAppForm()
+    {
+        EditingAppId = null;
+        NewAppName = "";
+        NewAppKind = "web";
+        NewAppTarget = "";
+        NewAppPinned = false;
+        NewAppFeatured = false;
+        NewAppSourceId = 0;
+        DraftIconDataUrl = null;
+        DraftIconTarget = null;
+        AppError = "";
+        ShowAppForm = true;
+        PendingRemoveAppId = null;
+    }
+
+    private void EditAppForm(LauncherApp app)
+    {
+        EditingAppId = app.Id;
+        NewAppName = app.Name;
+        NewAppKind = app.Kind;
+        NewAppTarget = app.Target;
+        NewAppPinned = app.PinnedToHome;
+        NewAppFeatured = app.IncludeInFeatured;
+        NewAppSourceId = app.WatchmodeSourceId ??
+            StreamingProviderDirectory.MatchByName(app.Name, AvailableStreamingProviders) ?? 0;
+        DraftIconDataUrl = app.IconDataUrl;
+        DraftIconTarget = app.Target;
+        AppError = "";
+        ShowAppForm = true;
+        PendingRemoveAppId = null;
+    }
+
+    private async Task LoadStreamingProvidersAsync()
+    {
+        if (LoadingStreamingProviders || Life.IsCancellationRequested) return;
+        LoadingStreamingProviders = true;
+        try
+        {
+            AvailableStreamingProviders = await StreamingProviders.GetAsync(Life.Token);
+            if (ShowAppForm && NewAppSourceId == 0)
+            {
+                NewAppSourceId = StreamingProviderDirectory.MatchByName(
+                    NewAppName, AvailableStreamingProviders) ?? 0;
+            }
+        }
+        catch (OperationCanceledException) when (Life.IsCancellationRequested) { }
+        finally
+        {
+            LoadingStreamingProviders = false;
+            if (!Life.IsCancellationRequested) await InvokeAsync(StateHasChanged);
+        }
+    }
+
+    private async Task ToggleFeaturedStreamingAsync(LauncherApp app)
+    {
+        if (!app.IncludeInFeatured && (!app.WatchmodeSourceId.HasValue || app.WatchmodeSourceId <= 0))
+        {
+            EditAppForm(app);
+            Notification = "Selecione o serviço correspondente no Watchmode antes de ativar os destaques.";
+            return;
+        }
+        try
+        {
+            await Repository.SetFeaturedStreamingAsync(app.Id, !app.IncludeInFeatured);
+            Apps = await Repository.GetAppsAsync();
+            await ReloadCatalogPreservingOrderAsync();
+            NextCatalogRefresh = DateTimeOffset.UtcNow;
+            _ = RefreshCatalogAsync();
+        }
+        catch (Exception ex) { Notification = ex.Message; }
+    }
+
+    private void CloseAppForm()
+    {
+        ShowAppForm = false;
+        EditingAppId = null;
+        AppError = "";
+    }
+
+    private async Task ResolveIconForFormAsync()
+    {
+        var url = NewAppTarget.Trim();
+        if (NewAppKind == "web" && !url.Contains("://", StringComparison.Ordinal) && url.Contains('.'))
+        {
+            url = "https://" + url;
+            NewAppTarget = url;
+        }
+        if (NewAppKind == "desktop")
+        {
+            if (url != DraftIconTarget)
+            {
+                DraftIconTarget = url;
+                DraftIconDataUrl = WindowsAppIconService.ReadIcon(url);
+                if (string.IsNullOrWhiteSpace(NewAppName) && File.Exists(url))
+                    NewAppName = Path.GetFileNameWithoutExtension(url);
+            }
+            return;
+        }
+        if (NewAppKind != "web" || !Uri.TryCreate(url, UriKind.Absolute, out var uri) ||
+            (uri.Scheme != "http" && uri.Scheme != "https")) return;
+        if (url == DraftIconTarget) return;
+        IconLoading = true;
+        DraftIconTarget = url;
+        DraftIconDataUrl = null;
+        try
+        {
+            var result = await IconService.ResolveAsync(url, Life.Token);
+            if (NewAppTarget.Trim() == url && !Life.IsCancellationRequested)
+            {
+                DraftIconDataUrl = result.ImageDataUrl;
+                if (string.IsNullOrWhiteSpace(NewAppName)) NewAppName = result.SuggestedName;
+                if (NewAppSourceId == 0)
+                    NewAppSourceId = StreamingProviderDirectory.MatchByName(
+                        NewAppName, AvailableStreamingProviders) ?? 0;
+            }
+        }
+        catch (OperationCanceledException) when (Life.IsCancellationRequested) { }
+        finally
+        {
+            IconLoading = false;
+            if (!Life.IsCancellationRequested) await InvokeAsync(StateHasChanged);
+        }
+    }
+
+    private async Task SaveAppAsync()
+    {
+        if (SavingApp) return;
+        SavingApp = true;
+        AppError = "";
+        try
+        {
+            var url = NewAppTarget.Trim();
+            if (NewAppKind == "web" && !url.Contains("://", StringComparison.Ordinal) && url.Contains('.'))
+            {
+                url = "https://" + url;
+                NewAppTarget = url;
+            }
+            if (url != DraftIconTarget)
+                await ResolveIconForFormAsync();
+            if (NewAppFeatured && NewAppSourceId == 0)
+                NewAppSourceId = StreamingProviderDirectory.MatchByName(
+                    NewAppName, AvailableStreamingProviders) ?? 0;
+            if (EditingAppId is int id)
+                await Repository.UpdateAppAsync(id, NewAppName, NewAppKind, url, NewAppPinned,
+                    DraftIconDataUrl, NewAppFeatured && NewAppKind == "web",
+                    NewAppSourceId > 0 ? NewAppSourceId : null);
+            else
+                await Repository.AddAppAsync(NewAppName, NewAppKind, url, NewAppPinned,
+                    DraftIconDataUrl, NewAppFeatured && NewAppKind == "web",
+                    NewAppSourceId > 0 ? NewAppSourceId : null);
+            Apps = await Repository.GetAppsAsync();
+            await ReloadCatalogPreservingOrderAsync();
+            NextCatalogRefresh = DateTimeOffset.UtcNow;
+            _ = RefreshCatalogAsync();
+            CloseAppForm();
+            Notification = "Atalho salvo.";
+            _ = LoadAppIconsAsync();
+        }
+        catch (Exception ex) { AppError = ex.Message; }
+        finally { SavingApp = false; }
+    }
+
+    private async Task ToggleAppPinnedAsync(LauncherApp app)
+    {
+        await Repository.SetAppPinnedAsync(app.Id, !app.PinnedToHome);
+        Apps = await Repository.GetAppsAsync();
+    }
+
+    private async Task LoadAppIconsAsync()
+    {
+        if (IconsLoading || Life.IsCancellationRequested) return;
+        IconsLoading = true;
+        try
+        {
+            var threshold = DateTimeOffset.UtcNow.AddDays(-14).ToUnixTimeSeconds();
+            foreach (var app in Apps.Where(a => a.Kind == "web" &&
+                         string.IsNullOrWhiteSpace(a.IconDataUrl) &&
+                         a.IconCheckedAtUnix < threshold).ToArray())
+            {
+                if (Life.IsCancellationRequested) break;
+                var data = await IconService.ResolveAsync(app.Target, Life.Token);
+                await Repository.SaveAppIconAsync(app.Id, app.Target, data.ImageDataUrl);
+                Apps = await Repository.GetAppsAsync();
+                if (!Life.IsCancellationRequested) await InvokeAsync(StateHasChanged);
+            }
+        }
+        catch (OperationCanceledException) when (Life.IsCancellationRequested) { }
+        catch (Exception) { /* Ícone opcional: apps e Home continuam disponíveis. */ }
+        finally { IconsLoading = false; }
+    }
+
+    private async Task AddFeatured()
+    {
+        FeatureError = "";
+        if (!ConfirmLink) { FeatureError = "Teste o link direto antes de adicioná-lo ao catálogo."; return; }
+        try
+        {
+            await Repository.AddFeaturedAsync(NewTitle, NewSynopsis, NewDirectUrl, NewYoutubeId);
+            ManualFeatured = await Repository.GetFeaturedAsync();
+            Featured = await Repository.GetHomeFeaturedAsync();
+            await EnterHomeAsync();
+            NewTitle = NewSynopsis = NewDirectUrl = NewYoutubeId = "";
+            ConfirmLink = false;
+        }
+        catch (Exception error) { FeatureError = error.Message; }
+    }
+    private async Task RemoveApp(int id)
+    {
+        await Repository.RemoveAppAsync(id);
+        Apps = await Repository.GetAppsAsync();
+        PendingRemoveAppId = null;
+        if (EditingAppId == id) CloseAppForm();
+        await ReloadCatalogPreservingOrderAsync();
+    }
+    private async Task RemoveFeatured(int id)
+    {
+        await Repository.RemoveFeaturedAsync(id);
+        ManualFeatured = await Repository.GetFeaturedAsync();
+        Featured = await Repository.GetHomeFeaturedAsync();
+        await EnterHomeAsync();
+    }
+    private void OpenDesktop() => Host.ShowDesktop();
+
+    private async Task SuspendHeroAsync()
+    {
+        SuspendedForExternalApp = true;
+        HeroVisible = false;
+        InteractingWithHero = false;
+        if (ObserverAttached)
+        {
+            try { await Js.InvokeVoidAsync("tvLauncherHero.unregister"); } catch (JSException) { }
+            ObserverAttached = false;
+        }
+        await InvokeAsync(StateHasChanged);
+    }
+
+    private void OnHomeRestored() => _ = InvokeAsync(async () =>
+    {
+        SuspendedForExternalApp = false;
+        Tab = "home";
+        InteractingWithHero = false;
+        await EnterHomeAsync();
+        StateHasChanged();
+    });
+
+    private void OnUpdaterChanged() => _ = InvokeAsync(StateHasChanged);
+
+    private void RestartForUpdate()
+    {
+        Host.RequestUpdateRestart();
+    }
+
+    public async ValueTask DisposeAsync()
+    {
+        Updater.Changed -= OnUpdaterChanged;
+        Host.HomeRestored -= OnHomeRestored;
+        Life.Cancel();
+        Life.Dispose();
+        try { await Js.InvokeVoidAsync("tvLauncherHero.unregister"); } catch { }
+        SelfReference?.Dispose();
+    }
+}

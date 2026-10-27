@@ -1,0 +1,14 @@
+**/bin/
+**/obj/
+.vs/
+*.user
+*.suo
+TVLauncher.db
+WebView2Profile/
+*.log
+**/api-keys.json
+**/catalog-credentials.dat
+**/catalog.json
+.publish/
+Releases/
+**/update-source.json

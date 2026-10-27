@@ -1,0 +1,22 @@
+@using TVLauncher.App.Models
+
+<span class="app-artwork" aria-hidden="true">
+    @if (!string.IsNullOrWhiteSpace(App.IconDataUrl))
+    {
+        <img class="app-logo-image" src="@App.IconDataUrl" alt="" loading="lazy" />
+    }
+    else
+    {
+        <span class="app-symbol app-symbol-@App.Icon">@Fallback</span>
+    }
+</span>
+
+@code {
+    [Parameter, EditorRequired] public LauncherApp App { get; set; } = default!;
+    private string Fallback => App.Icon switch
+    {
+        "netflix" => "N", "youtube" => "▶", "prime" => "prime",
+        "spotify" => "♫", "monitor" => "▣", _ =>
+            string.IsNullOrWhiteSpace(App.Name) ? "↗" : App.Name[..1].ToUpperInvariant()
+    };
+}
