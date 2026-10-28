@@ -8,7 +8,7 @@ on:
       version:
         description: 'Versão sem v (ex.: 0.6.13)'
         required: true
-        default: '0.6.13'
+        default: '0.6.15'
 permissions:
   contents: write
 jobs:

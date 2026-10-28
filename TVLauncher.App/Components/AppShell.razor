@@ -10,6 +10,7 @@
 @inject FeaturedRotationService RotationService
 @inject AppIconService IconService
 @inject LauncherUpdateService Updater
+@inject SystemPowerService PowerService
 @inject IJSRuntime Js
 
 <div class="shell focus-shell">
@@ -32,7 +33,10 @@
             </button>
         </nav>
         <button class="focus-nav-item focus-settings @(Tab == "settings" ? "focus-active" : "")" @onclick='() => SwitchTab("settings")' aria-label="Configurações" title="Configurações">
-            <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a2 2 0 0 1 .1 2.2l-1.1 1.4a2 2 0 0 1-2.1.6l-1.4-.5a8 8 0 0 1-2 .8l-.3 1.5h-1.8l-.4-1.5a8 8 0 0 1-2-.8l-1.4.5a2 2 0 0 1-2.1-.6l-1-1.4a2 2 0 0 1 .1-2.2l.9-1.1a7 7 0 0 1 0-2l-.9-1.1a2 2 0 0 1-.1-2.2l1-1.4a2 2 0 0 1 2.1-.6l1.4.5a8 8 0 0 1 2-.8l.4-1.5h1.8l.3 1.5a8 8 0 0 1 2 .8l1.4-.5a2 2 0 0 1 2.1.6l1.1 1.4a2 2 0 0 1-.1 2.2l-.9 1.1a7 7 0 0 1 0 2Z"/></svg><span>Ajustes</span>
+            <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68h.06a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9v.06a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09A1.65 1.65 0 0 0 19.4 15z"/></svg><span>Ajustes</span>
+        </button>
+        <button class="focus-nav-item focus-power" @onclick="OpenPowerMenu" aria-label="Energia do computador" title="Energia">
+            <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 2v10"/><path d="M6.3 5.8a9 9 0 1 0 11.4 0"/></svg><span>Energia</span>
         </button>
     </aside>
     <div class="focus-main">
@@ -605,6 +609,55 @@
         <div class="notification" role="alert"><span>@Notification</span><button @onclick="() => Notification = null" aria-label="Fechar aviso">×</button></div>
     }
     </div>
+    @if (PowerMenuOpen)
+    {
+        <div class="focus-power-backdrop" @onclick="ClosePowerMenu">
+            <section class="focus-power-dialog" role="dialog" aria-modal="true" aria-label="Opções de energia" @onclick:stopPropagation="true">
+                <div class="focus-power-heading">
+                    <div>
+                        <div class="focus-power-kicker">TW LAUNCHER · SISTEMA</div>
+                        <h2>@(PendingPowerAction is null ? "Energia" : $"{PowerActionName(PendingPowerAction.Value)} o computador?")</h2>
+                    </div>
+                    <button class="focus-power-close" @onclick="ClosePowerMenu" disabled="@PowerActionBusy" aria-label="Fechar menu de energia">×</button>
+                </div>
+                @if (PendingPowerAction is null)
+                {
+                    <p class="focus-power-description">Escolha o que deseja fazer com o computador.</p>
+                    <div class="focus-power-options">
+                        <button class="focus-power-option" @onclick="() => SelectPowerAction(SystemPowerAction.Sleep)">
+                            <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M20.2 14.8A9 9 0 0 1 9.2 3.8 9 9 0 1 0 20.2 14.8Z"/></svg>
+                            <span><strong>Suspender</strong><small>Manter os aplicativos abertos e economizar energia</small></span>
+                        </button>
+                        <button class="focus-power-option" @onclick="() => SelectPowerAction(SystemPowerAction.Restart)">
+                            <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M21 11a9 9 0 1 0-3 7"/><path d="M21 4v7h-7"/></svg>
+                            <span><strong>Reiniciar</strong><small>Encerrar a sessão e iniciar o Windows novamente</small></span>
+                        </button>
+                        <button class="focus-power-option" @onclick="() => SelectPowerAction(SystemPowerAction.Shutdown)">
+                            <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 2v10"/><path d="M6.3 5.8a9 9 0 1 0 11.4 0"/></svg>
+                            <span><strong>Desligar</strong><small>Encerrar o Windows e desligar o computador</small></span>
+                        </button>
+                    </div>
+                    <button class="focus-power-cancel" @onclick="ClosePowerMenu">Cancelar</button>
+                }
+                else
+                {
+                    <p class="focus-power-description">
+                        @PowerActionDescription(PendingPowerAction.Value)
+                    </p>
+                    @if (!string.IsNullOrWhiteSpace(PowerActionError))
+                    {
+                        <p class="focus-power-error" role="alert">@PowerActionError</p>
+                    }
+                    <div class="focus-power-confirm-actions">
+                        <button class="focus-power-cancel" @onclick="BackToPowerMenu" disabled="@PowerActionBusy">Voltar</button>
+                        <button class="focus-power-execute" @onclick="ConfirmPowerActionAsync" disabled="@PowerActionBusy">
+                            @(PowerActionBusy ? "Executando..." : $"Confirmar {PowerActionName(PendingPowerAction.Value).ToLowerInvariant()}")
+                        </button>
+                    </div>
+                }
+            </section>
+        </div>
+    }
 </div>
 
 @code {
@@ -612,6 +665,79 @@
     // but cannot share the same render-tree key under the same parent.
     private static string HeroContentKey(FeaturedTitle title) => $"hero-content:{title.RotationKey}";
     private static string HeroShowcaseKey(FeaturedTitle title) => $"hero-showcase:{title.RotationKey}";
+
+    private bool PowerMenuOpen;
+    private bool PowerActionBusy;
+    private string? PowerActionError;
+    private SystemPowerAction? PendingPowerAction;
+
+    private void OpenPowerMenu()
+    {
+        PowerActionError = null;
+        PendingPowerAction = null;
+        PowerMenuOpen = true;
+    }
+
+    private void ClosePowerMenu()
+    {
+        if (PowerActionBusy) return;
+        PowerMenuOpen = false;
+        PendingPowerAction = null;
+        PowerActionError = null;
+    }
+
+    private void BackToPowerMenu()
+    {
+        if (PowerActionBusy) return;
+        PendingPowerAction = null;
+        PowerActionError = null;
+    }
+
+    private void SelectPowerAction(SystemPowerAction action)
+    {
+        PendingPowerAction = action;
+        PowerActionError = null;
+    }
+
+    private static string PowerActionName(SystemPowerAction action) => action switch
+    {
+        SystemPowerAction.Sleep => "Suspender",
+        SystemPowerAction.Restart => "Reiniciar",
+        _ => "Desligar"
+    };
+
+    private static string PowerActionDescription(SystemPowerAction action) => action switch
+    {
+        SystemPowerAction.Sleep => "O computador entrará em suspensão. Ao reativá-lo, você poderá continuar de onde parou. A disponibilidade depende das configurações de energia do Windows.",
+        SystemPowerAction.Restart => "O Windows será reiniciado. Salve seu trabalho em outros programas antes de continuar; aplicativos com alterações pendentes podem impedir a operação.",
+        _ => "O Windows será desligado. Salve seu trabalho em outros programas antes de continuar; aplicativos com alterações pendentes podem impedir a operação."
+    };
+
+    private async Task ConfirmPowerActionAsync()
+    {
+        if (!PendingPowerAction.HasValue || PowerActionBusy) return;
+        PowerActionBusy = true;
+        PowerActionError = null;
+        try
+        {
+            await PowerService.ExecuteAsync(PendingPowerAction.Value);
+            ClosePowerMenuAfterExecution();
+        }
+        catch (Exception ex)
+        {
+            PowerActionError = "Não foi possível executar a operação: " + ex.Message;
+        }
+        finally
+        {
+            PowerActionBusy = false;
+        }
+    }
+
+    private void ClosePowerMenuAfterExecution()
+    {
+        PowerMenuOpen = false;
+        PendingPowerAction = null;
+    }
 
     private string Tab = "home";
     private string TabTitle => Tab switch

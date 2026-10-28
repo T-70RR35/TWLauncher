@@ -10,7 +10,7 @@
     <AssemblyName>TWLauncher</AssemblyName>
     <ApplicationIcon>Assets\TWLauncher.ico</ApplicationIcon>
     <LangVersion>latest</LangVersion>
-    <Version>0.6.13</Version>
+    <Version>0.6.15</Version>
     <StartupObject>TVLauncher.App.App</StartupObject>
   </PropertyGroup>
   <ItemGroup>

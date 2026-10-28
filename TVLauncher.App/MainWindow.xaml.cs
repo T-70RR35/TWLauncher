@@ -31,6 +31,7 @@ public partial class MainWindow : Window
         collection.AddSingleton<LauncherRepository>();
         collection.AddSingleton<WindowsHostService>();
         collection.AddSingleton<LauncherUpdateService>();
+        collection.AddSingleton<SystemPowerService>();
         collection.AddSingleton<WeatherService>();
         collection.AddSingleton<NewsService>();
         collection.AddSingleton<CatalogCredentialsService>();

@@ -7,6 +7,21 @@ Histórico consolidado a partir dos documentos `ALTERACOES_v*.md`, relatórios d
 
 O projeto foi inicialmente chamado de **TV Launcher**; nas versões seguintes passou a usar a marca **TW Launcher**. A pasta local `%LOCALAPPDATA%\TVLauncher` e o namespace `TVLauncher.App` permaneceram por compatibilidade.
 
+## 0.6.15 — Correção do ícone de Ajustes
+
+- Substituído o desenho SVG irregular da engrenagem do menu lateral por um ícone geométrico padronizado, com proporções corretas.
+- Mantidos layout Focus, funcionalidade do botão Ajustes e os controles de energia da versão anterior.
+- **Pendente:** compilação e verificação visual no WebView2 no Windows.
+
+## 0.6.14 — Controles de energia no Focus
+
+- Botão **Energia** no rodapé do menu lateral Focus, abaixo de Ajustes, sem alterar o desenho da Home.
+- Menu com **Suspender**, **Reiniciar** e **Desligar**, com confirmação explícita e opção de cancelar.
+- Serviço `SystemPowerService` usando APIs/recursos nativos do Windows; sem `shutdown /f` (sem fechamento forçado de programas).
+- Mensagem de erro quando o Windows recusa a solicitação; indisponibilidade de suspensão depende das configurações do PC.
+- Versão do `.csproj` e versão padrão do GitHub Actions atualizadas para `0.6.14`.
+- **Pendente:** compilação real e teste no Windows, incluindo retorno da suspensão.
+
 ## 0.6.13 — Instalador e atualizações automáticas
 
 - Integração do **Velopack 1.2.161**, incluindo inicialização antes de abrir as janelas WPF.

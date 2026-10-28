@@ -2,7 +2,7 @@
 
 Aplicativo de entretenimento para Windows, pensado para uso em PCs conectados à TV. Combina uma Home cinematográfica, atalhos de aplicativos e sites, catálogo de filmes e séries, notícias e clima.
 
-**Versão de referência:** `0.6.13` · **Interface:** Focus · **Estado da distribuição:** código-fonte preparado para instalador e atualizações automáticas; a geração do `Setup.exe` e o teste completo dependem de compilação no Windows.
+**Versão de referência:** `0.6.14` · **Interface:** Focus · **Estado da distribuição:** código-fonte preparado para instalador e atualizações automáticas; a geração do `Setup.exe` e o teste completo dependem de compilação no Windows.
 
 ## Tecnologias
 
@@ -20,7 +20,8 @@ Aplicativo de entretenimento para Windows, pensado para uso em PCs conectados à
 - **Navegação:** janela WebView2 com sessão persistente; barra superior que aparece ao levar o mouse ao topo e desaparece completamente quando recolhida. Atalho `Ctrl + Alt + Home` para retornar ao Launcher.
 - **Notícias:** leitura de feeds, imagens quando disponíveis e cache local.
 - **Clima:** temperatura e condição resumidas no cabeçalho; área de detalhes.
-- **Configurações:** credenciais do catálogo, sincronização e, a partir da v0.6.13, situação das atualizações.
+- **Configurações:** credenciais do catálogo, sincronização e situação das atualizações.
+- **Energia (v0.6.14):** botão no rodapé do menu lateral Focus para suspender, reiniciar ou desligar o computador, com confirmação antes de executar. Não força o encerramento dos aplicativos.
 
 A Home abre mesmo sem chaves de API. O catálogo automático mostra somente títulos com disponibilidade e links efetivamente conhecidos; as integrações externas dependem de rede, cobertura e limites das APIs. A reprodução de conteúdos protegidos por DRM e o áudio automático dos trailers dependem também das restrições dos serviços e do WebView2.
 
@@ -83,16 +84,16 @@ Use `TVLauncher.App/api-keys.example.json` como referência para o arquivo de co
 
 O modo utilizado é **standalone**: cada instalação mantém seus próprios dados e consulta as APIs conforme sua configuração. Não publique chaves pessoais no GitHub, no instalador ou em chamados. Para atualizar o aplicativo, preserve toda a pasta `%LOCALAPPDATA%\TVLauncher`; nunca distribua uma cópia do banco ou do perfil WebView2 junto com o executável.
 
-## Instalador e atualizações automáticas (v0.6.13)
+## Instalador e atualizações automáticas (v0.6.14)
 
 O projeto contém **código e automação para gerar** o instalador Velopack e publicar versões no GitHub Releases. Isso **não significa que o instalador já tenha sido compilado ou publicado**.
 
 ### Publicar usando GitHub Actions
 
 1. Coloque o projeto em um **repositório público** do GitHub, mantendo `.github/workflows/publicar-twlauncher.yml`.
-2. Em **Actions**, execute **Gerar e publicar TW Launcher para Windows**, informando a versão, por exemplo `0.6.13`. Também é possível disparar com uma tag `v0.6.13`.
+2. Em **Actions**, execute **Gerar e publicar TW Launcher para Windows**, informando a versão, por exemplo `0.6.14`. Também é possível disparar com uma tag `v0.6.14`.
 3. O workflow usa Windows, .NET 10 e Velopack para criar o `Setup.exe` e os pacotes de atualização em **Releases**.
-4. Instale o `Setup.exe` para habilitar as verificações automáticas. Para a próxima entrega, publique uma versão maior, como `0.6.14`.
+4. Instale o `Setup.exe` para habilitar as verificações automáticas. Para a próxima entrega, publique uma versão maior, como `0.6.15`.
 
 ### Publicar pelo PowerShell
 
@@ -392,3 +393,11 @@ Carrossel numerado com pontos fixos relativos à fila sorteada na entrada da Hom
 ## Cobertura da consolidação
 
 O arquivo original reunia **23 documentos Markdown**. Este `README.md` incorpora as instruções ativas, as decisões de design, os requisitos e o manual de instalação. O [`CHANGELOG.md`](CHANGELOG.md) concentra as alterações por versão, as verificações realizadas, as pendências e o `README.md` histórico do pacote. Assim os dois documentos cobrem o conteúdo do ZIP sem exigir os 23 arquivos separados.
+
+## Opções de energia (v0.6.14)
+
+O botão **Energia** fica abaixo de **Ajustes** no menu lateral Focus. Selecione **Suspender**, **Reiniciar** ou **Desligar**, revise a mensagem e confirme. Cancelar não executa nenhuma operação.
+
+- **Suspender:** usa a função nativa `SetSuspendState(false, false, false)` do Windows (`powrprof.dll`). Disponibilidade sujeita às configurações e permissões de energia do computador.
+- **Reiniciar / Desligar:** usa `shutdown.exe /r /t 0` ou `shutdown.exe /s /t 0`. Não utiliza `/f` para forçar o encerramento de programas. O Windows ainda poderá bloquear a operação por trabalho não salvo.
+- **Cuidados:** salve arquivos abertos antes de confirmar. Teste as três opções em um computador Windows sem trabalho pendente; elas afetam o computador inteiro, e não somente o TW Launcher.
